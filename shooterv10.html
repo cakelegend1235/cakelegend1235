@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Shooter Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #f06c64);
+            background-size: 400% 400%;
+            animation: gradientAnimation 15s ease infinite;
+            font-family: 'Arial', sans-serif;
+            cursor: url('https://www.iconarchive.com/download/i10472/google/noto-emoji-animals-nature/256/cat-face.ico'), auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            position: relative;
+        }
+
+        @keyframes gradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0; /* Make sure it's behind UI elements */
+        }
+
+        .ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 24px;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+            z-index: 1; /* Ensure UI elements stay on top of the canvas */
+        }
+
+        #menu, #gameOverScreen, #shopScreen, #infoScreen, #skinScreen {
+            position: absolute;
+            text-align: center;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            text-shadow: 0 0 10px black;
+            z-index: 2; /* Ensure menu screens stay on top */
+        }
+
+        #menu h1, #gameOverScreen h1, #shopScreen h1, #infoScreen h1, #skinScreen h1 {
+            font-size: 40px;
+        }
+
+        #menu button, #gameOverScreen button, #shopScreen button, #infoScreen button, #skinScreen button {
+            margin: 20px;
+            padding: 20px;
+            font-size: 18px;
+            border: 2px solid white;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #menu button:hover, #gameOverScreen button:hover, #shopScreen button:hover, #infoScreen button:hover, #skinScreen button:hover {
+            background: rgba(0, 0, 0, 0.8);
+            transform: scale(1.1);
+        }
+
+        #skinScreen {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <h1>2D Shooter Game</h1>
+        <button id="playButton">Play</button>
+        <button id="shopButton">Shop</button>
+        <button id="infoButton">Info</button>
+        <button id="skinButton">Skins</button>
+    </div>
+
+    <div id="shopScreen" style="display: none;">
+        <h1>Shop</h1>
+        <p>Coins: <span id="coinDisplay">0</span></p>
+        <button id="buyHealthButton">Buy Health (+20) - 50 Coins</button>
+        <button id="buyDamageButton">Buy Damage (+10) - 100 Coins</button>
+        <button id="buyFireRateButton">Buy Fire Rate (-50ms) - 150 Coins</button>
+        <button id="buyShotgunButton">Buy Shotgun (+1 Bullet) - 150 Coins</button>
+        <button id="backToMenuFromShop">Back to Menu</button>
+    </div>
+
+    <div id="infoScreen" style="display: none;">
+        <h1>Info</h1>
+        <p>Controls:</p>
+        <ul>
+            <li>Move: W, A, S, D or Arrow Keys</li>
+            <li>Shoot: Click</li>
+            <li>Survive waves of enemies and upgrade your player!</li>
+        </ul>
+        <button id="backToMenuFromInfo">Back to Menu</button>
+    </div>
+
+    <div id="skinScreen" style="display: none;">
+        <h1>Select Skin</h1>
+        <p>Coins: <span id="coinDisplaySkin">0</span></p>
+        <p>Skins cost 20 coins each</p>
+        <button id="selectPurple">Purple - 20 Coins</button>
+        <button id="selectGreen">Green - 20 Coins</button>
+        <button id="selectBlue">Blue - 20 Coins</button>
+        <button id="backToMenuFromSkins">Back to Menu</button>
+    </div>
+
+    <div id="gameOverScreen" style="display: none;">
+        <h1>Game Over</h1>
+        <p>Your Score: <span id="finalScore">0</span></p>
+        <button id="restartButton">Restart</button>
+        <button id="backToMenuFromGameOver">Back to Menu</button>
+    </div>
+
+    <div class="ui" style="display: none;">
+        <div id="score">Score: 0</div>
+        <div id="health">Health: 100</div>
+    </div>
+    <canvas id="gameCanvas" style="display: none;"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const menu = document.getElementById('menu');
+        const shopScreen = document.getElementById('shopScreen');
+        const infoScreen = document.getElementById('infoScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const ui = document.querySelector('.ui');
+        const coinDisplay = document.getElementById('coinDisplay');
+        const coinDisplaySkin = document.getElementById('coinDisplaySkin');
+        const skinScreen = document.getElementById('skinScreen');
+
+        let coins = 0;
+        let score = 0;
+        let bulletDamage = 10;
+        let playerHealth = 100;
+        let fireRate = 300;
+        let playerColor = 'purple'; // Default player color
+        let numBullets = 1;  // Default number of bullets shot at once
+        let lastShotTime = 0;
+        let wave = 1;
+
+        const maxHealth = 200;
+        const maxDamage = 50;
+        const minFireRate = 100; // This is the minimum fire rate, lower values mean faster shooting
+        const maxBullets = 5;
+
+        const healthPrice = 50;
+        const damagePrice = 100;
+        const fireRatePrice = 150;
+        const shotgunPrice = 150;
+
+        const keys = {
+            w: false,
+            a: false,
+            s: false,
+            d: false,
+            ArrowUp: false,
+            ArrowLeft: false,
+            ArrowDown: false,
+            ArrowRight: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        class Player {
+            constructor(x, y, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.health = playerHealth;
+                this.speed = 5;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            move(dx, dy) {
+                this.x = Math.min(Math.max(this.x + dx, this.radius), canvas.width - this.radius);
+                this.y = Math.min(Math.max(this.y + dy, this.radius), canvas.height - this.radius);
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, radius, color, velocity, damage) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+                this.damage = damage;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update() {
+                this.draw();
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+            }
+        }
+
+        class Enemy {
+            constructor(x, y, radius, color, velocity, health, damage, scoreValue) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+                this.health = health;
+                this.damage = damage;
+                this.scoreValue = scoreValue;
+                this.knockbackVelocity = { x: 0, y: 0 }; // This will store the knockback velocity
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update(player) {
+                const angle = Math.atan2(player.y - this.y, player.x - this.x);
+                this.velocity.x = Math.cos(angle);
+                this.velocity.y = Math.sin(angle);
+
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+
+                // Apply knockback (this happens after a collision)
+                this.x += this.knockbackVelocity.x;
+                this.y += this.knockbackVelocity.y;
+
+                this.draw();
+            }
+
+            applyKnockback(projectile) {
+                const knockbackMagnitude = 2; // Adjust this value to control the knockback distance
+
+                // Calculate the angle between the projectile and the enemy
+                const angleToProjectile = Math.atan2(projectile.y - this.y, projectile.x - this.x);
+
+                // Normalize the direction (so the force doesn't depend on the projectile's speed)
+                const knockbackDirectionX = Math.cos(angleToProjectile);
+                const knockbackDirectionY = Math.sin(angleToProjectile);
+
+                // Apply the knockback with a fixed magnitude
+                this.knockbackVelocity.x = knockbackDirectionX * knockbackMagnitude;
+                this.knockbackVelocity.y = knockbackDirectionY * knockbackMagnitude;
+            }
+        }
+
+        let player;
+        const projectiles = [];
+        const enemies = [];
+
+        function resetGame() {
+            player = new Player(canvas.width / 2, canvas.height / 2, 15, playerColor);
+            projectiles.length = 0;
+            enemies.length = 0;
+            score = 0;
+            player.health = playerHealth;
+            wave = 1;
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = `Score: ${score}`;
+            document.getElementById('health').textContent = `Health: ${player.health}`;
+            coinDisplay.textContent = coins;
+            coinDisplaySkin.textContent = coins; // Update coins display in the skin screen as well
+        }
+
+        function spawnEnemies() {
+            setInterval(() => {
+                const radius = Math.random() * (30 - 10) + 10;
+                let x, y;
+
+                if (Math.random() < 0.5) {
+                    x = Math.random() < 0.5 ? 0 - radius : canvas.width + radius;
+                    y = Math.random() * canvas.height;
+                } else {
+                    x = Math.random() * canvas.width;
+                    y = Math.random() < 0.5 ? 0 - radius : canvas.height + radius;
+                }
+
+                const health = Math.max(10, radius * 2);  
+                const damage = Math.ceil(radius / 5);
+                const scoreValue = Math.ceil(radius / 5);
+                const color = `hsl(${Math.random() * 360}, 50%, 50%)`;
+                const angle = Math.atan2(canvas.height / 2 - y, canvas.width / 2 - x);
+                const velocity = {
+                    x: Math.cos(angle),
+                    y: Math.sin(angle)
+                };
+
+                enemies.push(new Enemy(x, y, radius, color, velocity, health, damage, scoreValue));
+            }, 1000);
+        }
+
+        function animate() {
+            const animationId = requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            player.draw();
+
+            let dx = 0;
+            let dy = 0;
+            if (keys.w || keys.arrowup) dy -= player.speed;
+            if (keys.s || keys.arrowdown) dy += player.speed;
+            if (keys.a || keys.arrowleft) dx -= player.speed;
+            if (keys.d || keys.arrowright) dx += player.speed;
+            player.move(dx, dy);
+
+            projectiles.forEach((projectile, index) => {
+                projectile.update();
+
+                if (
+                    projectile.x + projectile.radius < 0 ||
+                    projectile.x - projectile.radius > canvas.width ||
+                    projectile.y + projectile.radius < 0 ||
+                    projectile.y - projectile.radius > canvas.height
+                ) {
+                    projectiles.splice(index, 1);
+                }
+            });
+
+            enemies.forEach((enemy, index) => {
+                enemy.update(player);
+
+                const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                if (dist - enemy.radius - player.radius < 1) {
+                    player.health -= enemy.damage;
+                    updateUI();
+
+                    if (player.health <= 0) {
+                        cancelAnimationFrame(animationId);
+                        endGame();
+                    }
+
+                    enemies.splice(index, 1);
+                }
+
+                projectiles.forEach((projectile, projectileIndex) => {
+                    const dist = Math.hypot(projectile.x - enemy.x, projectile.y - enemy.y);
+                    if (dist - enemy.radius - projectile.radius < 1) {
+                        enemy.health -= projectile.damage;
+                        enemy.radius = Math.max(enemy.radius - 2, 5); 
+
+                        // Apply knockback when hit
+                        enemy.applyKnockback(projectile);
+
+                        if (enemy.health <= 0) {
+                            setTimeout(() => {
+                                enemies.splice(index, 1);
+                                score += enemy.scoreValue;
+                                coins += enemy.scoreValue;
+                                updateUI();
+                            }, 0);
+                        }
+
+                        projectiles.splice(projectileIndex, 1);
+                    }
+                });
+            });
+        }
+
+        canvas.addEventListener('click', (event) => {
+            const currentTime = Date.now();
+            if (currentTime - lastShotTime > fireRate) {
+                const mouseX = event.clientX;
+                const mouseY = event.clientY;
+                const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+
+                // Shoot multiple bullets for shotgun effect
+                for (let i = 0; i < numBullets; i++) {
+                    const offsetAngle = angle + (Math.random() - 0.5) * 0.2;  // Spread bullets
+                    const velocity = {
+                        x: Math.cos(offsetAngle) * 5,
+                        y: Math.sin(offsetAngle) * 5
+                    };
+
+                    projectiles.push(new Projectile(player.x, player.y, 5, 'white', velocity, bulletDamage));
+                }
+                lastShotTime = currentTime;
+            }
+        });
+
+        function endGame() {
+            document.getElementById('finalScore').textContent = score;
+            ui.style.display = 'none';
+            canvas.style.display = 'none';
+            gameOverScreen.style.display = 'block';
+        }
+
+        function showMenu() {
+            menu.style.display = 'block';
+            gameOverScreen.style.display = 'none';
+            ui.style.display = 'none';
+            canvas.style.display = 'none';
+            skinScreen.style.display = 'none';
+        }
+
+        document.getElementById('playButton').addEventListener('click', () => {
+            resetGame();
+            menu.style.display = 'none';
+            ui.style.display = 'block';
+            canvas.style.display = 'block';
+            spawnEnemies();
+            animate();
+        });
+
+        document.getElementById('restartButton').addEventListener('click', () => {
+            resetGame();
+            gameOverScreen.style.display = 'none';
+            ui.style.display = 'block';
+            canvas.style.display = 'block';
+            spawnEnemies();
+            animate();
+        });
+
+        document.getElementById('backToMenuFromGameOver').addEventListener('click', showMenu);
+
+        document.getElementById('shopButton').addEventListener('click', () => {
+            menu.style.display = 'none';
+            shopScreen.style.display = 'block';
+        });
+
+        document.getElementById('infoButton').addEventListener('click', () => {
+            menu.style.display = 'none';
+            infoScreen.style.display = 'block';
+        });
+
+        document.getElementById('skinButton').addEventListener('click', () => {
+            menu.style.display = 'none';
+            skinScreen.style.display = 'block';
+            coinDisplaySkin.textContent = coins; // Update coins display in skin screen
+        });
+
+        document.getElementById('backToMenuFromShop').addEventListener('click', () => {
+            shopScreen.style.display = 'none';
+            menu.style.display = 'block';
+        });
+
+        document.getElementById('backToMenuFromInfo').addEventListener('click', () => {
+            infoScreen.style.display = 'none';
+            menu.style.display = 'block';
+        });
+
+        document.getElementById('backToMenuFromSkins').addEventListener('click', () => {
+            skinScreen.style.display = 'none';
+            menu.style.display = 'block';
+        });
+
+        document.getElementById('selectPurple').addEventListener('click', () => {
+            if (coins >= 20) {
+                playerColor = 'purple';
+                coins -= 20;
+                resetGame();
+                skinScreen.style.display = 'none';
+                menu.style.display = 'block';
+            }
+        });
+
+        document.getElementById('selectGreen').addEventListener('click', () => {
+            if (coins >= 20) {
+                playerColor = 'green';
+                coins -= 20;
+                resetGame();
+                skinScreen.style.display = 'none';
+                menu.style.display = 'block';
+            }
+        });
+
+        document.getElementById('selectBlue').addEventListener('click', () => {
+            if (coins >= 20) {
+                playerColor = 'blue';
+                coins -= 20;
+                resetGame();
+                skinScreen.style.display = 'none';
+                menu.style.display = 'block';
+            }
+        });
+
+        // Shop button event listeners with price increment logic
+        document.getElementById('buyHealthButton').addEventListener('click', () => {
+            if (coins >= healthPrice && playerHealth < maxHealth) {
+                playerHealth += Math.floor(20 / 5);  // Increase health by 1/5 of 20
+                coins -= healthPrice;
+                updateUI();
+                // Increase the price of health by 1/5
+                healthPrice = Math.ceil(healthPrice * 1.2);
+                document.getElementById('buyHealthButton').textContent = `Buy Health (+20) - ${healthPrice} Coins`;
+            }
+            if (playerHealth >= maxHealth) {
+                document.getElementById('buyHealthButton').textContent = 'MAX';
+            }
+        });
+
+        document.getElementById('buyDamageButton').addEventListener('click', () => {
+            if (coins >= damagePrice && bulletDamage < maxDamage) {
+                bulletDamage += Math.floor(10 / 5);  // Increase damage by 1/5 of 10
+                coins -= damagePrice;
+                updateUI();
+                // Increase the price of damage by 1/5
+                damagePrice = Math.ceil(damagePrice * 1.2);
+                document.getElementById('buyDamageButton').textContent = `Buy Damage (+10) - ${damagePrice} Coins`;
+            }
+            if (bulletDamage >= maxDamage) {
+                document.getElementById('buyDamageButton').textContent = 'MAX';
+            }
+        });
+
+        document.getElementById('buyFireRateButton').addEventListener('click', () => {
+            if (coins >= fireRatePrice && fireRate > minFireRate) {
+                fireRate -= Math.floor(50 / 5);  // Decrease fire rate (increase shooting speed)
+                coins -= fireRatePrice;
+                updateUI();
+                // Increase the price of fire rate by 1/5
+                fireRatePrice = Math.ceil(fireRatePrice * 1.2);
+                document.getElementById('buyFireRateButton').textContent = `Buy Fire Rate (-50ms) - ${fireRatePrice} Coins`;
+            }
+            if (fireRate <= minFireRate) {
+                document.getElementById('buyFireRateButton').textContent = 'MAX';
+            }
+        });
+
+        document.getElementById('buyShotgunButton').addEventListener('click', () => {
+            if (coins >= shotgunPrice && numBullets < maxBullets) {
+                numBullets = Math.min(numBullets + 1, maxBullets);  // Limit to maxBullets
+                coins -= shotgunPrice;
+                updateUI();
+                // Increase the price of shotgun by 1/5
+                shotgunPrice = Math.ceil(shotgunPrice * 1.2);
+                document.getElementById('buyShotgunButton').textContent = `Buy Shotgun (+1 Bullet) - ${shotgunPrice} Coins`;
+            }
+            if (numBullets >= maxBullets) {
+                document.getElementById('buyShotgunButton').textContent = 'MAX';
+            }
+        });
+
+        showMenu();
+    </script>
+</body>
+</html>
